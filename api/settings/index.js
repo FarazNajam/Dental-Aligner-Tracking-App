@@ -8,7 +8,7 @@ function getUserIdFromClientPrincipal(req) {
     const json = Buffer.from(encoded, "base64").toString("utf8");
     const principal = JSON.parse(json);
     return principal.userId || null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -29,7 +29,7 @@ module.exports = async function (context, req) {
   }
 
   const client = TableClient.fromConnectionString(conn, tableName);
-  await client.createTable(); // safe even if table exists
+  await client.createTable();
 
   const partitionKey = userId;
   const rowKey = "settings";
@@ -53,6 +53,37 @@ module.exports = async function (context, req) {
           startDateIso: null,
           trayDays: 10
         }
+      };
+    }
+    return;
+  }
+
+  if (req.method === "POST") {
+    const { startDateIso, trayDays } = req.body || {};
+
+    if (!startDateIso) {
+      context.res = { status: 400, body: "Missing startDateIso in request body" };
+      return;
+    }
+
+    const entity = {
+      partitionKey,
+      rowKey,
+      startDateIso,
+      trayDays: Number(trayDays || 10)
+    };
+
+    try {
+      await client.upsertEntity(entity, "Merge");
+      context.res = {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: { startDateIso: entity.startDateIso, trayDays: entity.trayDays }
+      };
+    } catch (e) {
+      context.res = {
+        status: 500,
+        body: "Error saving entity: " + e.message
       };
     }
     return;
