@@ -1,8 +1,19 @@
 const { TableClient } = require("@azure/data-tables");
 
-module.exports = async function (context, req) {
-  context.log("Function started");
+function getUserIdFromClientPrincipal(req) {
+  const encoded = req.headers["x-ms-client-principal"];
+  if (!encoded) return null;
 
+  try {
+    const json = Buffer.from(encoded, "base64").toString("utf8");
+    const principal = JSON.parse(json);
+    return principal.userId || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+module.exports = async function (context, req) {
   const conn = process.env.STORAGE_CONNECTION_STRING;
   const tableName = process.env.TABLE_NAME || "TraySettings";
 
@@ -11,17 +22,41 @@ module.exports = async function (context, req) {
     return;
   }
 
-  try {
-    const client = TableClient.fromConnectionString(conn, tableName);
-    await client.createTable(); // safe even if table exists
-    context.res = {
-      status: 200,
-      body: "Function ran successfully and connected to Table Storage"
-    };
-  } catch (e) {
-    context.res = {
-      status: 500,
-      body: "Error connecting to Table Storage: " + e.message
-    };
+  const userId = getUserIdFromClientPrincipal(req);
+  if (!userId) {
+    context.res = { status: 401, body: "Not authenticated" };
+    return;
   }
+
+  const client = TableClient.fromConnectionString(conn, tableName);
+  await client.createTable(); // safe even if table exists
+
+  const partitionKey = userId;
+  const rowKey = "settings";
+
+  if (req.method === "GET") {
+    try {
+      const entity = await client.getEntity(partitionKey, rowKey);
+      context.res = {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: {
+          startDateIso: entity.startDateIso,
+          trayDays: entity.trayDays
+        }
+      };
+    } catch (e) {
+      context.res = {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: {
+          startDateIso: null,
+          trayDays: 10
+        }
+      };
+    }
+    return;
+  }
+
+  context.res = { status: 405, body: "Method not allowed" };
 };
