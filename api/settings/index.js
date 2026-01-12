@@ -29,8 +29,16 @@ module.exports = async function (context, req) {
   }
 
   const client = TableClient.fromConnectionString(conn, tableName);
+
+  // Ensure table exists (safe to call repeatedly)
+  try {
+    await client.createTable();
+  } catch (e) {
+    if (e.statusCode !== 409) throw e;
+  }
+
   const partitionKey = userId;
-  const rowKey = "TraySettings";
+  const rowKey = "settings";   // FIXED
 
   if (req.method === "GET") {
     try {
@@ -53,26 +61,4 @@ module.exports = async function (context, req) {
   if (req.method === "POST") {
     const { startDateIso, trayDays } = req.body || {};
     if (!startDateIso) {
-      context.res = { status: 400, body: { error: "startDateIso is required" } };
-      return;
-    }
-
-    const entity = {
-      partitionKey,
-      rowKey,
-      startDateIso,
-      trayDays: Number(trayDays || 10)
-    };
-
-    await client.upsertEntity(entity, "Merge");
-
-    context.res = {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-      body: { startDateIso: entity.startDateIso, trayDays: entity.trayDays }
-    };
-    return;
-  }
-
-  context.res = { status: 405, body: "Method not allowed" };
-};
+      context.res = { status: 400
