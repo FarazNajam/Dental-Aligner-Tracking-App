@@ -13,7 +13,7 @@ jobs:
 
       # Debug: confirm the token is actually available to the runner
       - name: Confirm SWA token is present
-      - shell: bash
+        shell: bash
         run: |
           if [ -z "${{ secrets.SWA_DEPLOY_TOKEN }}" ]; then
             echo "SWA_DEPLOY_TOKEN is MISSING in this run (secrets not passed)."
